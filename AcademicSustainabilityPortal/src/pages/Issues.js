@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import API from "../Services/api";
+import API from "../Services/authService";
 
 export default function ReportIssue() {
   const [formData, setFormData] = useState({

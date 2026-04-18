@@ -8,36 +8,42 @@ const User = require("./models/User");
 
 const app = express();
 
-// Middleware
+// =====================
+// MIDDLEWARE
+// =====================
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// MongoDB Connection
-mongoose.connect(
-  process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/sustainabilityDB",
-  {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  }
-).then(() => {
-  console.log("✅ MongoDB connected successfully");
-}).catch((err) => {
-  console.log("❌ MongoDB connection error:", err.message);
+// =====================
+// MONGODB CONNECTION (FIXED)
+// =====================
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  tls: true, // ✅ Fix for SSL error
+})
+.then(() => {
+  console.log("✅ MongoDB Connected");
+})
+.catch(err => {
+  console.error("❌ MongoDB Connection Error:", err);
 });
 
-// Routes
-const authRoutes = require("./routes/auth");
-const issueRoutes = require("./routes/issues"); // Assuming you might move issues later, but for now we keep inline or refactor.
-// Actually, let's just add the auth route usage.
+// Optional: listen for runtime DB errors
+mongoose.connection.on("error", (err) => {
+  console.error("❌ MongoDB Runtime Error:", err);
+});
 
+// =====================
+// ROUTES
+// =====================
+const authRoutes = require("./routes/auth");
 app.use("/api/auth", authRoutes);
 
 // =====================
-// API ROUTES
+// HEALTH CHECK
 // =====================
-
-// Health Check
 app.get("/api/health", (req, res) => {
   res.json({ status: "Server is running", timestamp: new Date() });
 });
@@ -69,7 +75,7 @@ app.get("/api/issues/:id", async (req, res) => {
   }
 });
 
-// Create new issue
+// Create issue
 app.post("/api/issues", async (req, res) => {
   try {
     const { title, description, category, location, priority, reportedBy } = req.body;
@@ -131,7 +137,7 @@ app.delete("/api/issues/:id", async (req, res) => {
   }
 });
 
-// Update issue status
+// Update status
 app.patch("/api/issues/:id/status", async (req, res) => {
   try {
     const { status } = req.body;
@@ -156,10 +162,11 @@ app.patch("/api/issues/:id/status", async (req, res) => {
   }
 });
 
-// Assign issue to staff
+// Assign staff
 app.patch("/api/issues/:id/assign", async (req, res) => {
   try {
     const { staffId } = req.body;
+
     const issue = await Issue.findByIdAndUpdate(
       req.params.id,
       { assignedTo: staffId, status: "In Progress" },
@@ -167,13 +174,14 @@ app.patch("/api/issues/:id/assign", async (req, res) => {
     ).populate("assignedTo", "name email");
 
     if (!issue) return res.status(404).json({ error: "Issue not found" });
+
     res.json(issue);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Add comment to issue
+// Add comment
 app.post("/api/issues/:id/comments", async (req, res) => {
   try {
     const { author, text } = req.body;
@@ -203,50 +211,7 @@ app.post("/api/issues/:id/comments", async (req, res) => {
 });
 
 // =====================
-// DASHBOARD API
-// =====================
-
-app.get("/api/dashboard/metrics", async (req, res) => {
-  try {
-    const totalIssues = await Issue.countDocuments();
-    const pendingIssues = await Issue.countDocuments({ status: "Pending" });
-    const inProgressIssues = await Issue.countDocuments({ status: "In Progress" });
-    const resolvedIssues = await Issue.countDocuments({ status: "Resolved" });
-
-    const metrics = {
-      energyUsage: "2,450 kWh",
-      wasteReduction: "78%",
-      carbonFootprint: "-12%",
-      contributors: 342,
-      totalIssues,
-      pendingIssues,
-      inProgressIssues,
-      resolvedIssues,
-    };
-
-    res.json(metrics);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get("/api/dashboard/focus-areas", async (req, res) => {
-  try {
-    const focusAreas = [
-      { name: "Building Operations", progress: 72 },
-      { name: "Transportation", progress: 45 },
-      { name: "Campus Greening", progress: 88 },
-      { name: "Waste Management", progress: 65 },
-    ];
-
-    res.json(focusAreas);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// =====================
-// USER API (Basic)
+// USERS API
 // =====================
 
 app.get("/api/users/:id", async (req, res) => {
@@ -263,49 +228,19 @@ app.get("/api/users/:id", async (req, res) => {
   }
 });
 
-app.put("/api/users/:id", async (req, res) => {
-  try {
-    const { name, email, phone, institution } = req.body;
-
-    const updatedUser = await User.findByIdAndUpdate(
-      req.params.id,
-      { name, email, phone, institution },
-      { new: true, runValidators: true }
-    ).select("-password");
-
-    if (!updatedUser) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    res.json(updatedUser);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get all staff members
-app.get("/api/users/role/staff", async (req, res) => {
-  try {
-    const staff = await User.find({ role: "Staff" }).select("name email _id");
-    res.json(staff);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // =====================
 // ERROR HANDLING
 // =====================
-
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
 });
 
-// Start Server
+// =====================
+// START SERVER
+// =====================
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📊 API docs available at http://localhost:${PORT}/api/health`);
+  console.log(`📊 API: http://localhost:${PORT}/api/health`);
 });
-
-module.exports = app;
